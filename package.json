@@ -1,6 +1,6 @@
 {
   "name": "pi-agent-workflows",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pi workflow extension for orchestrating recursive subagents with inter-agent communication, write locking, cost accounting, and a workflow TUI.",
   "type": "module",
   "private": false,
@@ -13,13 +13,13 @@
     "subagents",
     "coding-agent"
   ],
-  "homepage": "https://github.com/an2tha/pi-worfklows#readme",
+  "homepage": "https://github.com/an2tha/pi-workflows#readme",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/an2tha/pi-worfklows.git"
+    "url": "git+ssh://git@github.com/an2tha/pi-workflows.git"
   },
   "bugs": {
-    "url": "https://github.com/an2tha/pi-worfklows/issues"
+    "url": "https://github.com/an2tha/pi-workflows/issues"
   },
   "exports": {
     ".": "./index.ts",

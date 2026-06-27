@@ -31,7 +31,7 @@ pi install npm:pi-agent-workflows
 Or install directly from GitHub:
 
 ```bash
-pi install git:github.com/an2tha/pi-worfklows
+pi install git:github.com/an2tha/pi-workflows
 ```
 
 For local development, try a checkout without installing:
