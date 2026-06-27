@@ -6,8 +6,8 @@ A pi extension that lets an overseer model spawn typed workflow subagents from J
 
 - `workflow_spawn` tool: accepts a compact `WorkflowPlan` JSON string and runs subagents sequentially or in parallel.
 - Floating workflow window: `workflow_spawn` opens a focused overlay with collapsible agent trees, tool-call overview, per-agent inspection, pricing, and controls.
-- Statusbar accounting: subagent token/cost usage is added into the main pi footer totals with a `wf+` breakdown.
-- Close with `q`: returns to the normal pi UI without aborting the workflow.
+- Status/statusbar accounting: subagent token/cost usage is reported without replacing other extension footers by default; legacy footer replacement is opt-in.
+- Overlay controls: `q` closes, Esc aborts, Tab switches views, arrows/j/k select agents, and `u`/`d` or `[`/`]` scroll on keyboards without Page Up/Down.
 - Individual inspection: `workflow_inspect_agent`, `/workflow-inspect`, or the overlay Inspect tab show one subagent’s task, model, output, messages, notes, events, usage, and controls.
 - Prompt injection: `workflow_prompt`, `/workflow-prompt`, or `p` inside the overlay can steer active subagents while they run.
 - Escape abort: pressing Esc in the overlay aborts the workflow and propagates cancellation to running subagents.
@@ -18,7 +18,7 @@ A pi extension that lets an overseer model spawn typed workflow subagents from J
 - Bash for every subagent: the `bash` tool is mandatory for all spawned agents.
 - Root skill inheritance: available/loaded skills from the overseer context are carried into subagent prompts.
 - TypeScript API: register custom agent classes and custom workflow tools with `createWorkflowExtension`, `defineAgentClass`, and `defineWorkflowTool`.
-- Main-agent skill: `skills/pi-workflows/SKILL.md` encourages workflow-first orchestration for codebase work and mandates `@fast` for inspection, `@default` for generation.
+- Main-agent skill: `skills/pi-workflows/SKILL.md` tells the agent to get an overview first, use workflows only for clearly defined substantial work, and route `@fast`/`@default` models appropriately.
 
 ## Install
 
@@ -50,34 +50,32 @@ Configure workflow model aliases, enable/disable the extension, and choose non-i
 /workflow-settings footer status
 ```
 
-## Example plan
+Manually force workflows for a task when you know the extra cost is worthwhile:
 
-```json
-{
-  "goal": "Investigate and validate the CLI parser",
-  "strategy": "parallel",
-  "agents": [
-    {
-      "id": "research",
-      "class": "researcher",
-      "task": "Find the parser entry points and summarize relevant files.",
-      "model": "@fast"
-    },
-    {
-      "id": "review",
-      "class": "reviewer",
-      "task": "Look for parser edge cases and safety risks.",
-      "model": "@fast"
-    }
-  ]
-}
+```text
+/workflow-force <task>
+/workflow-force-next <task>
 ```
 
-Configure fast/default model aliases in `~/.pi/agent/settings.json` or `.pi/settings.json`:
+## Custom workflow ideas
+
+Agents are encouraged to create task-specific workflow plans rather than reuse canned templates. Good custom shapes include:
+
+- subsystem split: one agent per package/API/feature area
+- risk split: compatibility, migration, concurrency, security, UX/accessibility
+- ownership split: one writer per non-overlapping file group with write locks
+- validation split: tests, typecheck/lint, repro scripts, docs examples, smoke checks
+- release split: docs/examples, packaging, changelog/install verification
+
+Use `/workflow-classes` to see registered classes, then assign custom ids, task text, dependencies, and limits for the current request.
+
+Configure workflow behavior and fast/default model aliases in `~/.pi/agent/settings.json` or `.pi/settings.json`:
 
 ```json
 {
   "workflows": {
+    "enabled": true,
+    "footerMode": "status",
     "fastModel": "openai-codex/codex-5.3-spark",
     "defaultModel": "anthropic/claude-sonnet-4-5"
   }

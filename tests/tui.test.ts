@@ -19,6 +19,32 @@ function makeRun(): WorkflowRunState {
   };
 }
 
+function makeLargeRun(count: number): WorkflowRunState {
+  const agents: WorkflowRunState["agents"] = new Map();
+  for (let index = 0; index < count; index++) {
+    const id = `agent${String(index).padStart(2, "0")}`;
+    agents.set(id, {
+      id,
+      className: "researcher",
+      task: `Investigate area ${index}`,
+      runId: "run_large",
+      depth: 0,
+      status: index === count - 1 ? "running" : "completed",
+      startedAt: 1_000 + index,
+    });
+  }
+  return {
+    id: "run_large",
+    goal: "Large overlay test",
+    status: "running",
+    createdAt: 1_000,
+    agents,
+    messages: [],
+    blackboard: [],
+    events: [],
+  };
+}
+
 describe("WorkflowOverlay", () => {
   test("renders a floating workflow panel with controls and agent graph", () => {
     const run = makeRun();
@@ -68,6 +94,33 @@ describe("WorkflowOverlay", () => {
 
     expect(closed).toBe(true);
     expect(aborted).toBe(true);
+  });
+
+  test("scrolls long workflow panels instead of relying on overlay clipping", () => {
+    const run = makeLargeRun(24);
+    const overlay = new WorkflowOverlay({
+      engine: { getRun: () => run } as unknown as WorkflowEngine,
+      getRunId: () => run.id,
+      done: () => {},
+      abort: () => {},
+      getMaxLines: () => 14,
+    });
+
+    const before = overlay.render(100).join("\n");
+    expect(before).toContain("agent00 [researcher]");
+    expect(before).not.toContain("agent23 [researcher]");
+    expect(before).toContain("lines 1-");
+
+    overlay.handleInput("d");
+    const scrolled = overlay.render(100).join("\n");
+    expect(scrolled).not.toContain("agent00 [researcher]");
+    expect(scrolled).toContain("lines ");
+
+    overlay.handleInput("G");
+    const after = overlay.render(100).join("\n");
+    expect(after).toContain("agent23 [researcher]");
+    expect(after).not.toContain("agent00 [researcher]");
+    expect(after).toContain("lines ");
   });
 
   test("injects prompts into the selected running subagent", () => {

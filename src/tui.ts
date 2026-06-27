@@ -11,15 +11,18 @@ export interface WorkflowOverlayOptions {
   getRunId: () => string | undefined;
   done: () => void;
   abort: () => void;
+  getMaxLines?: () => number | undefined;
 }
 
 export class WorkflowOverlay implements Component {
   private view: WorkflowPanelView = "tree";
   private selectedIndex = 0;
   private scroll = 0;
+  private scrollMax = 0;
+  private pageSize = 8;
   private collapsed = new Set<string>();
   private promptMode: PromptMode;
-  private statusMessage = "q close • esc abort • tab switch • ↑↓ select • enter collapse • p prompt";
+  private statusMessage = "q close • esc abort • tab switch • ↑↓ select • u/d scroll • enter collapse • p prompt";
   private cachedWidth?: number;
   private cachedRunVersion?: string;
   private cachedLines?: string[];
@@ -57,12 +60,22 @@ export class WorkflowOverlay implements Component {
     else if (data === "4") this.view = "pricing";
     else if (data === "j" || matchesKey(data, Key.down)) this.moveSelection(1, visible.length);
     else if (data === "k" || matchesKey(data, Key.up)) this.moveSelection(-1, visible.length);
+    else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d")) || data === "d" || data === "D" || data === "]") this.scrollBy(this.pageSize);
+    else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u")) || data === "u" || data === "U" || data === "[") this.scrollBy(-this.pageSize);
+    else if (matchesKey(data, Key.home)) this.scroll = 0;
+    else if (matchesKey(data, Key.end)) this.scroll = this.scrollMax;
     else if (matchesKey(data, Key.right)) this.expandSelected(visible);
     else if (matchesKey(data, Key.left)) this.collapseSelected(visible);
     else if (matchesKey(data, Key.enter) || data === " ") this.toggleSelected(visible);
     else if (data === "p" || data === "P") this.startPrompt(visible);
-    else if (data === "g") this.selectedIndex = 0;
-    else if (data === "G") this.selectedIndex = Math.max(0, visible.length - 1);
+    else if (data === "g") {
+      this.selectedIndex = 0;
+      this.scroll = 0;
+    } else if (data === "G") {
+      this.selectedIndex = Math.max(0, visible.length - 1);
+      this.scroll = this.scrollMax;
+      this.ensureSelectedVisible();
+    }
 
     this.clampSelection(visible.length);
     this.invalidate();
@@ -70,11 +83,14 @@ export class WorkflowOverlay implements Component {
 
   render(width: number): string[] {
     const run = this.getRun();
-    const version = runVersion(run, this.view, this.selectedIndex, this.scroll, this.collapsed, this.promptMode, this.statusMessage);
+    const contentWidth = Math.max(48, width - 4);
+    const content = this.renderContent(run, contentWidth);
+    const maxLines = this.getMaxLines();
+    const visibleContent = this.applyScroll(content, contentWidth, maxLines);
+    const version = runVersion(run, this.view, this.selectedIndex, this.scroll, this.collapsed, this.promptMode, this.statusMessage, maxLines);
     if (this.cachedLines && this.cachedWidth === width && this.cachedRunVersion === version) return this.cachedLines;
 
-    const content = this.renderContent(run, Math.max(48, width - 4));
-    const lines = frameLines(" ✦ pi workflows · orchestrator ", content, width);
+    const lines = frameLines(" ✦ pi workflows · orchestrator ", visibleContent, width);
     this.cachedWidth = width;
     this.cachedRunVersion = version;
     this.cachedLines = lines;
@@ -90,6 +106,49 @@ export class WorkflowOverlay implements Component {
   private getRun(): WorkflowRunState | undefined {
     const runId = this.options.getRunId();
     return runId ? this.options.engine.getRun(runId) : undefined;
+  }
+
+  private getMaxLines(): number | undefined {
+    const value = this.options.getMaxLines?.();
+    if (value === undefined || !Number.isFinite(value)) return undefined;
+    return Math.max(6, Math.floor(value));
+  }
+
+  private applyScroll(content: string[], width: number, maxLines: number | undefined): string[] {
+    if (!maxLines || content.length + 2 <= maxLines) {
+      this.scroll = 0;
+      this.scrollMax = 0;
+      this.pageSize = Math.max(1, maxLines ? maxLines - 3 : 8);
+      return content;
+    }
+
+    const bodyCapacity = Math.max(1, maxLines - 2);
+    const stickyFooter = content.at(-1) ?? "";
+    const scrollable = content.slice(0, -1);
+    const scrollableCapacity = Math.max(1, bodyCapacity - 1);
+    this.scrollMax = Math.max(0, scrollable.length - scrollableCapacity);
+    this.scroll = clamp(this.scroll, 0, this.scrollMax);
+    this.pageSize = scrollableCapacity;
+
+    const end = Math.min(scrollable.length, this.scroll + scrollableCapacity);
+    const indicator = `lines ${this.scroll + 1}-${end}/${scrollable.length}`;
+    return [
+      ...scrollable.slice(this.scroll, end),
+      truncateToWidth(`${indicator} • ${stickyFooter}`, width),
+    ];
+  }
+
+  private scrollBy(delta: number): void {
+    this.scroll = clamp(this.scroll + delta, 0, this.scrollMax);
+  }
+
+  private ensureSelectedVisible(): void {
+    if (this.view !== "tree" || this.scrollMax <= 0) return;
+    const approximateSelectedLine = 10 + this.selectedIndex * 3;
+    const lower = this.scroll + 2;
+    const upper = this.scroll + Math.max(2, this.pageSize - 2);
+    if (approximateSelectedLine < lower) this.scroll = clamp(approximateSelectedLine - 2, 0, this.scrollMax);
+    else if (approximateSelectedLine > upper) this.scroll = clamp(approximateSelectedLine - this.pageSize + 2, 0, this.scrollMax);
   }
 
   private renderContent(run: WorkflowRunState | undefined, width: number): string[] {
@@ -287,6 +346,7 @@ export class WorkflowOverlay implements Component {
 
   private moveSelection(delta: number, count: number): void {
     this.selectedIndex = Math.max(0, Math.min(count - 1, this.selectedIndex + delta));
+    this.ensureSelectedVisible();
   }
 
   private clampSelection(count: number): void {
@@ -478,8 +538,9 @@ function runVersion(
   collapsed: Set<string>,
   promptMode: PromptMode,
   statusMessage: string,
+  maxLines: number | undefined,
 ): string {
-  if (!run) return `none:${view}:${selectedIndex}:${scroll}:${statusMessage}`;
+  if (!run) return `none:${view}:${selectedIndex}:${scroll}:${maxLines}:${statusMessage}`;
   return JSON.stringify({
     id: run.id,
     status: run.status,
@@ -491,6 +552,7 @@ function runVersion(
     view,
     selectedIndex,
     scroll,
+    maxLines,
     collapsed: Array.from(collapsed).sort(),
     promptMode,
     statusMessage,
@@ -596,4 +658,8 @@ function padVisual(text: string, width: number): string {
   const current = visibleWidth(text);
   if (current >= width) return truncateToWidth(text, width, "");
   return `${text}${" ".repeat(width - current)}`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }

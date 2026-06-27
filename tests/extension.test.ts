@@ -29,8 +29,10 @@ describe("createWorkflowExtension", () => {
   test("registers workflow tools, command, and skill discovery path", async () => {
     const tools: Array<{ name: string }> = [];
     const commands: string[] = [];
+    const commandHandlers = new Map<string, Function>();
     const handlers = new Map<string, Function[]>();
     let activeTools: string[] = [];
+    const sentUserMessages: Array<{ content: string; options?: unknown }> = [];
     const pi = {
       on(event: string, handler: Function) {
         const list = handlers.get(event) ?? [];
@@ -40,14 +42,18 @@ describe("createWorkflowExtension", () => {
       registerTool(tool: { name: string }) {
         tools.push(tool);
       },
-      registerCommand(name: string) {
+      registerCommand(name: string, options: { handler: Function }) {
         commands.push(name);
+        commandHandlers.set(name, options.handler);
       },
       getActiveTools() {
         return activeTools;
       },
       setActiveTools(next: string[]) {
         activeTools = next;
+      },
+      sendUserMessage(content: string, options?: unknown) {
+        sentUserMessages.push({ content, options });
       },
       exec() {
         throw new Error("not used in this test");
@@ -64,6 +70,8 @@ describe("createWorkflowExtension", () => {
       "workflow_status",
     ]);
     expect(commands).toContain("workflow-classes");
+    expect(commands).toContain("workflow-force");
+    expect(commands).toContain("workflow-force-next");
     expect(commands).toContain("workflow-inspect");
     expect(commands).toContain("workflow-prompt");
     expect(commands).toContain("workflow-settings");
@@ -84,7 +92,7 @@ describe("createWorkflowExtension", () => {
     }, ctx);
     expect(injected.systemPrompt).toContain("pi-workflows:auto-injected-skill");
     expect(injected.systemPrompt).toContain("<skill name=\"pi-workflows\"");
-    expect(injected.systemPrompt).toContain("Use the workflow engine whenever it can reduce latency");
+    expect(injected.systemPrompt).toContain("Workflow runs are costly");
 
     const reinjected = await beforeAgentStart?.({
       type: "before_agent_start",
@@ -109,5 +117,19 @@ describe("createWorkflowExtension", () => {
     expect(footerSet).toBe(false);
     expect(statusValue).toBeUndefined();
     expect(activeTools).toEqual(expect.arrayContaining(["workflow_spawn", "workflow_status"]));
+
+    await commandHandlers.get("workflow-force")?.("refactor the parser", {
+      cwd: process.cwd(),
+      hasUI: true,
+      isIdle: () => true,
+      ui: {
+        notify: () => {},
+        editor: async () => undefined,
+        getEditorText: () => "",
+      },
+    });
+    expect(sentUserMessages).toHaveLength(1);
+    expect(sentUserMessages[0]?.content).toContain("WORKFLOW FORCE OVERRIDE");
+    expect(sentUserMessages[0]?.content).toContain("refactor the parser");
   });
 });

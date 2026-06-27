@@ -1,6 +1,6 @@
 {
   "name": "pi-agent-workflows",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pi workflow extension for orchestrating recursive subagents with inter-agent communication, write locking, cost accounting, and a workflow TUI.",
   "type": "module",
   "private": false,

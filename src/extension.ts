@@ -95,8 +95,9 @@ export function createWorkflowExtension(options: WorkflowExtensionOptions = {}):
       promptSnippet:
         "workflow_spawn: spawn typed subagents from a WorkflowPlan JSON string for parallel/recursive work.",
       promptGuidelines: [
-        "Use workflow_spawn when independent subagents can reduce wall-clock time or when a cheaper/faster model can do focused work.",
-        "Keep planJson compact. Prefer researcher/reviewer/tester on fast models and only enable canSpawn when recursion is useful.",
+        "Workflow runs are costly: first get an overview of the task and only call workflow_spawn when work is clearly defined, substantial, and decomposable.",
+        "Do not use workflow_spawn for trivial edits, simple questions, single-file lookups, or ambiguous requests unless the user explicitly forces workflows.",
+        "Create a custom workflow plan for the user's exact task: task-specific agent ids, responsibilities, dependencies, limits, and stop conditions; do not copy canned/builtin workflow ideas.",
         "Every spawned subagent has bash plus workflow_send/workflow_receive/workflow_blackboard/workflow_locks; mutating bash commands must declare writePaths.",
       ],
       parameters: SpawnParams,
@@ -120,6 +121,7 @@ export function createWorkflowExtension(options: WorkflowExtensionOptions = {}):
               getRunId: () => getDisplayedRun()?.id,
               done: close,
               abort: () => ctx.abort(),
+              getMaxLines: () => workflowOverlayMaxLines(tui.terminal.rows),
             });
           }, {
             overlay: true,
@@ -249,6 +251,30 @@ export function createWorkflowExtension(options: WorkflowExtensionOptions = {}):
       },
     });
 
+    pi.registerCommand("workflow-force", {
+      description: "Force workflow orchestration for a specific task. Usage: /workflow-force <task>",
+      async handler(args, ctx) {
+        if (!(await notifyIfWorkflowDisabled(ctx))) return;
+        const task = args.trim() || (ctx.hasUI ? await ctx.ui.editor("Task to run with forced workflows", ctx.ui.getEditorText()) : undefined);
+        if (!task?.trim()) {
+          ctx.ui.notify("Usage: /workflow-force <task>", "warning");
+          return;
+        }
+        pi.sendUserMessage(buildWorkflowForceMessage(task), ctx.isIdle() ? undefined : { deliverAs: "followUp" });
+        ctx.ui.notify("Sent forced workflow task.", "info");
+      },
+    });
+
+    pi.registerCommand("workflow-force-next", {
+      description: "Prefill the editor with a workflow-force instruction for the next message.",
+      async handler(args, ctx) {
+        if (!(await notifyIfWorkflowDisabled(ctx))) return;
+        const task = args.trim() || ctx.ui.getEditorText().trim();
+        ctx.ui.setEditorText(buildWorkflowForceMessage(task || ""));
+        ctx.ui.notify("Editor prefilled with workflow-force instructions. Review and submit when ready.", "info");
+      },
+    });
+
     pi.registerCommand("workflow-classes", {
       description: "List registered workflow agent classes and subagent tools.",
       async handler(_args, ctx) {
@@ -345,6 +371,22 @@ async function notifyIfWorkflowDisabled(ctx: ExtensionCommandContext): Promise<b
   if (isWorkflowEnabled(settings)) return true;
   ctx.ui.notify("pi-agent-workflows is disabled. Run /workflow-settings enable to re-enable it.", "warning");
   return false;
+}
+
+function buildWorkflowForceMessage(task: string): string {
+  return [
+    "WORKFLOW FORCE OVERRIDE:",
+    "Use pi-agent-workflows for this task even if it would normally be below the automatic workflow threshold.",
+    "First get a brief overview of what needs to be done, then call workflow_spawn with narrow, cost-bounded subagents.",
+    "Keep the workflow plan compact and avoid unnecessary recursive spawning.",
+    "",
+    "Task:",
+    task.trim() || "<describe the task here>",
+  ].join("\n");
+}
+
+function workflowOverlayMaxLines(termHeight: number): number {
+  return Math.max(8, Math.min(Math.floor(termHeight * 0.92), termHeight - 2));
 }
 
 function formatCompact(value: number): string {
