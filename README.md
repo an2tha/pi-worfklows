@@ -1,4 +1,4 @@
-# pi-workflows
+# pi-agent-workflows
 
 A pi extension that lets an overseer model spawn typed workflow subagents from JSON.
 
@@ -19,6 +19,32 @@ A pi extension that lets an overseer model spawn typed workflow subagents from J
 - Root skill inheritance: available/loaded skills from the overseer context are carried into subagent prompts.
 - TypeScript API: register custom agent classes and custom workflow tools with `createWorkflowExtension`, `defineAgentClass`, and `defineWorkflowTool`.
 - Main-agent skill: `skills/pi-workflows/SKILL.md` encourages workflow-first orchestration for codebase work and mandates `@fast` for inspection, `@default` for generation.
+
+## Install
+
+Install from npm:
+
+```bash
+pi install npm:pi-agent-workflows
+```
+
+Or install directly from GitHub:
+
+```bash
+pi install git:github.com/an2tha/pi-worfklows
+```
+
+For local development, try a checkout without installing:
+
+```bash
+pi -e /path/to/pi-workflows/index.ts
+```
+
+Configure workflow model aliases interactively:
+
+```text
+/workflow-settings
+```
 
 ## Example plan
 
@@ -85,7 +111,7 @@ import {
   defineAgentClass,
   defineWorkflowTool,
   textResult,
-} from "pi-workflows";
+} from "pi-agent-workflows";
 
 export default createWorkflowExtension({
   agentClasses: [
